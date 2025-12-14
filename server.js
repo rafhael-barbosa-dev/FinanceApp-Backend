@@ -1,4 +1,4 @@
-// server.js - Versão Completa (GET, ADD, UPDATE) usando googleapis
+// server.js - Versão Completa (GET, ADD, UPDATE) usando googleapis - CORRIGIDA
 
 // 1. IMPORTAÇÕES E SETUP
 require('dotenv').config(); 
@@ -9,8 +9,9 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 2. CONFIGURAÇÃO DE CORS
-const allowedOrigins = ['https://rafhael-barbosa-dev.github.io', 'http://localhost:5173/FinanceApp/', 'http://localhost:5173']; 
+// 2. CONFIGURAÇÃO DE CORS (Mantida com base na sua última correção)
+// É crucial que esta lista contenha: 'https://rafhael-barbosa-dev.github.io', 'http://localhost:3000', e 'http://localhost:5173'
+const allowedOrigins = ['https://rafhael-barbosa-dev.github.io', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5173/FinanceApp/']; 
 const corsOptions = {
   origin: allowedOrigins,
   optionsSuccessStatus: 200
@@ -29,62 +30,29 @@ const sheets = google.sheets({ version: 'v4', auth });
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
 // --- CONFIGURAÇÃO DAS ABAS E COLUNAS ---
-// ATENÇÃO: Verifique se estes nomes de abas e mapeamentos de colunas correspondem
-// EXATAMENTE aos nomes e ordem da sua planilha.
 const SHEET_NAMES = {
-    REGISTRO: 'Registro', 
-    METAS: 'Metas', 
-    ORGANIZADORES: 'Organizadores' 
+    REGISTRO: 'Registro',
+    METAS: 'Metas',
+    ORGANIZADORES: 'Organizadores',
 };
 
-// Mapeamento de Cabeçalho para Letra da Coluna (para o endpoint de UPDATE)
-// Baseado na ordem padrão: A=Data, B=Tipo, C=Valor, D=Descricao, etc.
-const COLUMN_MAP = {
+// Mapeamento de nome de coluna (key do objeto JSON) para letra da coluna na planilha
+const COL_MAP = {
     'Data': 'A',
     'Tipo': 'B',
     'Valor': 'C',
-    'Descricao': 'D',
+    'Descrição': 'D',
     'Tag_1': 'E',
     'Tag_2': 'F',
     'Tag_3': 'G',
     'Tag_4': 'H',
-    // Adicione mais mapeamentos se sua planilha tiver mais colunas
+    // ... adicione outras colunas do Registro se necessário, como Mês, Ano, etc.
 };
 
-// --- FUNÇÕES UTILITÁRIAS DE DADOS ---
 
-// Recria a lógica de mapeamento para retornar um objeto rawData ao Frontend
-const mapHeadersToObjects = (rows) => {
-    if (!rows || rows.length === 0) return [];
-    const headers = rows[0].map(h => h.toString().trim()); // Cabeçalhos limpos
-    
-    // Ignora a linha de cabeçalho (index 0)
-    return rows.slice(1).map((row, index) => {
-        const obj = {};
-        // ROW_NUMBER é o índice real da linha (cabeçalho + índice da linha de dados)
-        obj.ROW_NUMBER = index + 2; 
-        
-        headers.forEach((header, colIndex) => {
-            obj[header] = row[colIndex] !== undefined ? row[colIndex] : ''; 
-        });
-        return obj;
-    });
-};
-
-// --- AUTENTICAÇÃO ---
-async function authenticateSheet() {
-  try {
-    const response = await sheets.spreadsheets.get({
-      spreadsheetId: SPREADSHEET_ID,
-      fields: 'properties.title'
-    });
-    console.log(`Planilha carregada e autenticada: ${response.data.properties.title}`);
-  } catch (error) {
-    console.error("Erro na autenticação da planilha. Verifique as chaves e o compartilhamento:", error.message);
-    throw new Error("Falha na autenticação da Sheets API.");
-  }
-}
-// server.js (Adicionar antes do endpoint /api/get-all-data)
+// =========================================================================
+// === FUNÇÃO CRÍTICA DE MAPEAMENTO (A CORREÇÃO PRINCIPAL) =================
+// =========================================================================
 
 /**
  * Converte a resposta da Sheets API (array de arrays) em um array de objetos.
@@ -103,69 +71,92 @@ function mapData(data) {
     return rows.map((row, index) => {
         const rowObject = {
             // Adiciona o número da linha na planilha, crucial para a edição!
-            ROW_NUMBER: index + 2 // Linha 1 é cabeçalho (index 0), então os dados começam na linha 2.
+            // Os dados começam na linha 2, então o index (0-based) precisa de +2.
+            ROW_NUMBER: index + 2 
         }; 
         
         headers.forEach((header, colIndex) => {
-            // Usa o cabeçalho como chave
+            // Usa o cabeçalho como chave. O valor é vazio se a célula estiver vazia.
             rowObject[header] = row[colIndex] || ''; 
         });
 
         return rowObject;
     });
 }
-// 4. NOVO: ENDPOINT PARA LEITURA DE TODOS OS DADOS (GET)
+
+
+// =========================================================================
+// === ENDPOINTS ===========================================================
+// =========================================================================
+
+
+// 4. ENDPOINT DE LEITURA (GET) - AGORA COM MAPEAMENTO DE DADOS
 app.get('/api/get-all-data', async (req, res) => {
     try {
+        // Ranges para buscar dados (A1:M deve cobrir todas as colunas de Registro)
         const ranges = [
-            `${SHEET_NAMES.REGISTRO}!A:Z`,
-            `${SHEET_NAMES.METAS}!A:Z`,
-            `${SHEET_NAMES.ORGANIZADORES}!A:Z`,
+            `${SHEET_NAMES.REGISTRO}!A1:M`,
+            `${SHEET_NAMES.METAS}!A1:C`,
+            `${SHEET_NAMES.ORGANIZADORES}!A1:B`,
         ];
 
         const response = await sheets.spreadsheets.values.batchGet({
             spreadsheetId: SPREADSHEET_ID,
             ranges: ranges,
-            majorDimension: 'ROWS',
         });
 
-        const rawData = {
-            registro: mapHeadersToObjects(response.data.valueRanges[0].values),
-            metas: mapHeadersToObjects(response.data.valueRanges[1].values),
-            organizadores: mapHeadersToObjects(response.data.valueRanges[2].values),
-        };
+        // Extrai os resultados em ValueRange objects
+        const [registroData, metasData, organizadoresData] = response.data.valueRanges;
+
+        // --- APLICAÇÃO DA FUNÇÃO CRÍTICA DE MAPEAMENTO ---
+        const registro = mapData(registroData?.values);
+        const metas = mapData(metasData?.values);
+        const organizadores = mapData(organizadoresData?.values);
         
-        // O Frontend (App.jsx) espera este objeto
-        return res.status(200).json(rawData);
+        // Retorna a estrutura que o dataProcessor.jsx espera
+        return res.status(200).json({
+            registro: registro,
+            metas: metas,
+            organizadores: organizadores,
+        });
 
     } catch (error) {
-        console.error("Erro ao ler dados da planilha:", error.message);
-        return res.status(500).json({ success: false, message: 'Falha ao ler dados da Sheets API.', error: error.message });
+        console.error("Erro ao buscar todos os dados da Sheets API:", error);
+        return res.status(500).json({ success: false, message: 'Falha ao buscar dados da Sheets API.', error: error.message });
     }
 });
 
 
-// 5. ENDPOINT PARA ADICIONAR REGISTRO (POST)
+// 5. ENDPOINT DE ADIÇÃO (POST)
 app.post('/api/add-registro', async (req, res) => {
-    const data = req.body; 
-
-    if (!data.Data) {
-        return res.status(400).json({ success: false, message: 'Dados incompletos: Data é obrigatória.' });
+    // Se o ROW_NUMBER for passado, ele fará uma atualização (cuidado!).
+    if (req.body.ROW_NUMBER) {
+        // Redireciona para o endpoint de atualização direta
+        // NOTE: Isso exige que o corpo da requisição POST esteja no formato:
+        // { ROW_NUMBER: 2, column: 'Valor', value: '123.45' }
+        return handleUpdateRegistro(req, res);
     }
     
-    // Cria um array de valores na ordem das colunas da planilha (A, B, C, D...)
-    const rowValues = [
-        data.Data,
-        data.Tipo || '',
-        data.Valor,
-        data.Descricao || '',
-        data.Tag_1 || '',
-        data.Tag_2 || '',
-        data.Tag_3 || '',
-        data.Tag_4 || '',
-        // Adicione mais campos aqui se necessário
-    ];
+    // ... (Seu código existente para adicionar novas linhas) ...
+    // Se não for ROW_NUMBER, ele processa a adição de nova linha.
+    // Lógica aqui para mapear req.body (Data, Tipo, Valor, etc.) em uma array de valores
+    // e usar sheets.spreadsheets.values.append.
     
+    const { Data, Tipo, Valor, Descrição, Tag_1, Tag_2, Tag_3, Tag_4 } = req.body;
+    
+    // Array de valores, na ORDEM CORRETA das colunas A a H.
+    const rowValues = [
+        Data || '', 
+        Tipo || '', 
+        Valor || '', 
+        Descrição || '', 
+        Tag_1 || '', 
+        Tag_2 || '', 
+        Tag_3 || '', 
+        Tag_4 || '',
+        // As colunas de Mês/Ano (I, J) são calculadas na planilha, mas podem ser incluídas aqui se for preciso
+    ];
+
     const resource = {
         values: [rowValues],
     };
@@ -173,13 +164,14 @@ app.post('/api/add-registro', async (req, res) => {
     try {
         const response = await sheets.spreadsheets.values.append({
             spreadsheetId: SPREADSHEET_ID,
-            range: `${SHEET_NAMES.REGISTRO}!A:Z`, 
+            range: `${SHEET_NAMES.REGISTRO}!A:A`, // Começa a procurar a partir da coluna A
             valueInputOption: 'USER_ENTERED',
+            insertDataOption: 'INSERT_ROWS',
             resource,
         });
-        
-        return res.status(200).json({ success: true, message: 'Registro adicionado com sucesso!', updates: response.data });
 
+        return res.status(200).json({ success: true, message: 'Registro adicionado com sucesso!', updates: response.data });
+        
     } catch (error) {
         console.error("Erro ao adicionar linha:", error);
         return res.status(500).json({ success: false, message: 'Falha ao adicionar linha na Sheets API.', error: error.message });
@@ -187,19 +179,18 @@ app.post('/api/add-registro', async (req, res) => {
 });
 
 
-// 6. NOVO: ENDPOINT PARA ATUALIZAR REGISTRO (POST)
-app.post('/api/update-registro', async (req, res) => {
-    // Espera-se: ROW_NUMBER (número da linha), column (nome do cabeçalho), value (novo valor)
+// 6. LÓGICA DE ATUALIZAÇÃO DIRETA (POST) - Chamada interna ou via POST
+const handleUpdateRegistro = async (req, res) => {
+    // ... (Seu código existente para a lógica de edição) ...
+    
     const { ROW_NUMBER, column, value } = req.body;
-    
-    if (!ROW_NUMBER || !column || value === undefined) {
-        return res.status(400).json({ success: false, message: 'Dados incompletos para atualização (ROW_NUMBER, column, ou value ausentes).' });
-    }
-    
-    const targetColLetter = COLUMN_MAP[column];
 
+    if (!ROW_NUMBER || !column || value === undefined) {
+        return res.status(400).json({ success: false, message: 'Dados de atualização incompletos: ROW_NUMBER, column e value são obrigatórios.' });
+    }
+
+    const targetColLetter = COL_MAP[column];
     if (!targetColLetter) {
-        // Isso resolve a causa do 400 se o Frontend estiver enviando um nome de coluna não mapeado.
         return res.status(400).json({ success: false, message: `Coluna desconhecida ou não mapeada para letra: ${column}. Verifique o mapeamento no backend.` });
     }
 
@@ -226,17 +217,29 @@ app.post('/api/update-registro', async (req, res) => {
         console.error("Erro ao atualizar linha:", error);
         return res.status(500).json({ success: false, message: 'Falha ao atualizar linha na Sheets API.', error: error.message });
     }
-});
+};
+
+// Se você já tinha um endpoint /api/update-registro, ele pode ser simplificado:
+app.post('/api/update-registro', handleUpdateRegistro);
 
 
 // 7. INICIA O SERVIDOR
+// Função auxiliar para verificar a autenticação antes de iniciar o servidor
+const authenticateSheet = async () => {
+    try {
+        await auth.authorize();
+        console.log("Autenticação Google Sheets API bem-sucedida.");
+    } catch (error) {
+        console.error("Erro na autenticação:", error);
+        throw new Error("Falha na autenticação da Sheets API. Verifique SERVICE_ACCOUNT_EMAIL e PRIVATE_KEY.");
+    }
+}
+
 authenticateSheet().then(() => {
   app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
     console.log(`Endpoint de leitura: /api/get-all-data`);
-    console.log(`Endpoint de escrita: /api/add-registro`);
-    console.log(`Endpoint de atualização: /api/update-registro`);
   });
-}).catch((error) => {
-    console.error(`Servidor não iniciado devido a falha crítica na autenticação: ${error.message}`);
+}).catch(err => {
+    console.error("Erro fatal ao iniciar o servidor:", err.message);
 });
