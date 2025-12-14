@@ -84,7 +84,36 @@ async function authenticateSheet() {
     throw new Error("Falha na autenticação da Sheets API.");
   }
 }
+// server.js (Adicionar antes do endpoint /api/get-all-data)
 
+/**
+ * Converte a resposta da Sheets API (array de arrays) em um array de objetos.
+ * A primeira linha da planilha é tratada como o cabeçalho.
+ * @param {Array<Array<string>>} data - O array de arrays com os dados.
+ * @returns {Array<Object>} Um array de objetos com as chaves sendo os cabeçalhos.
+ */
+function mapData(data) {
+    if (!data || data.length < 1) {
+        return [];
+    }
+
+    const headers = data[0]; // A primeira linha é o cabeçalho
+    const rows = data.slice(1); // As demais são os dados
+
+    return rows.map((row, index) => {
+        const rowObject = {
+            // Adiciona o número da linha na planilha, crucial para a edição!
+            ROW_NUMBER: index + 2 // Linha 1 é cabeçalho (index 0), então os dados começam na linha 2.
+        }; 
+        
+        headers.forEach((header, colIndex) => {
+            // Usa o cabeçalho como chave
+            rowObject[header] = row[colIndex] || ''; 
+        });
+
+        return rowObject;
+    });
+}
 // 4. NOVO: ENDPOINT PARA LEITURA DE TODOS OS DADOS (GET)
 app.get('/api/get-all-data', async (req, res) => {
     try {
