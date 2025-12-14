@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 2. CONFIGURAÇÃO DE CORS
-const allowedOrigins = ['https://rafhael-barbosa-dev.github.io', 'http://localhost:5173/FinanceApp/']; 
+const allowedOrigins = ['https://rafhael-barbosa-dev.github.io', 'http://localhost:5173/FinanceApp/', 'http://localhost:5173']; 
 const corsOptions = {
   origin: allowedOrigins,
   optionsSuccessStatus: 200
