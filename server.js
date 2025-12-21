@@ -187,6 +187,7 @@ app.get('/', (req, res) => {
       'GET /api/get-all-data': 'Retorna todos os dados (Registro, Metas, Organizadores)',
       'POST /api/add-registro': 'Adiciona um novo registro',
       'POST /api/update-registro': 'Atualiza um registro existente',
+      'POST /api/delete-multiple-registros': 'Deleta múltiplos registros',
       'POST /api/add-meta': 'Adiciona uma nova meta',
       'POST /api/update-meta': 'Atualiza uma meta existente',
       'POST /api/delete-meta': 'Deleta uma meta',
@@ -369,6 +370,55 @@ app.post('/api/update-registro', async (req, res) => {
     } catch (error) {
         console.error("Erro ao atualizar linha:", error);
         return res.status(500).json({ success: false, message: 'Falha ao atualizar linha na Sheets API.', error: error.message });
+    }
+});
+
+// 7.5. ENDPOINT PARA DELETAR MÚLTIPLOS REGISTROS (POST /api/delete-multiple-registros)
+app.post('/api/delete-multiple-registros', async (req, res) => {
+    const { rowNumbers } = req.body;
+    
+    if (!rowNumbers || !Array.isArray(rowNumbers) || rowNumbers.length === 0) {
+        return res.status(400).json({ success: false, message: 'rowNumbers deve ser um array não vazio de números de linha.' });
+    }
+
+    try {
+        const sheetId = await getSheetId(SHEET_NAMES.REGISTRO);
+        if (!sheetId) {
+            return res.status(400).json({ success: false, message: 'Aba Registro não encontrada.' });
+        }
+
+        // Ordena os números de linha em ordem decrescente para deletar de baixo para cima
+        // Isso evita problemas de índices mudando após cada deleção
+        const sortedRowNumbers = [...rowNumbers].map(num => parseInt(num)).sort((a, b) => b - a);
+        
+        // Cria uma requisição de deleção para cada linha
+        const deleteRequests = sortedRowNumbers.map(rowNumber => ({
+            deleteDimension: {
+                range: {
+                    sheetId: sheetId,
+                    dimension: 'ROWS',
+                    startIndex: rowNumber - 1,
+                    endIndex: rowNumber
+                }
+            }
+        }));
+
+        const response = await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            resource: {
+                requests: deleteRequests
+            }
+        });
+
+        return res.status(200).json({ 
+            success: true, 
+            message: `${rowNumbers.length} registro(s) deletado(s) com sucesso!`, 
+            updates: response.data 
+        });
+        
+    } catch (error) {
+        console.error("Erro ao deletar múltiplos registros:", error);
+        return res.status(500).json({ success: false, message: 'Falha ao deletar registros na Sheets API.', error: error.message });
     }
 });
 
@@ -614,6 +664,7 @@ authenticateSheet().then(() => {
     console.log(`Endpoint de leitura: /api/get-all-data`);
     console.log(`Endpoint de escrita Registro: /api/add-registro`);
     console.log(`Endpoint de atualização Registro: /api/update-registro`);
+    console.log(`Endpoint de deleção múltipla Registro: /api/delete-multiple-registros`);
     console.log(`Endpoint de escrita Meta: /api/add-meta`);
     console.log(`Endpoint de atualização Meta: /api/update-meta`);
     console.log(`Endpoint de deleção Meta: /api/delete-meta`);
