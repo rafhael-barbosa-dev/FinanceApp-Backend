@@ -38,14 +38,14 @@ const SHEET_NAMES = {
 // Mapeamento de colunas para a aba Registro
 const COLUMN_MAP_REGISTRO = {
     'Data': 'A',
-    'Valor': 'B',
-    'Tag_1': 'C',
-    'Tag_2': 'D',
-    'Tag_3': 'E',
-    'Tag_4': 'F',
-    'Descricao': 'G',
-    'Forma do pagamento': 'H',
-    'Tipo': 'I',
+    'Tipo': 'B',
+    'Valor': 'C',
+    'Descrição': 'D',
+    'Tag_1': 'E',
+    'Tag_2': 'F',
+    'Tag_3': 'G',
+    'Tag_4': 'H',
+    'Forma do pagamento': 'I',
 };
 
 // Mapeamento de colunas para a aba Metas
@@ -178,7 +178,26 @@ async function authenticateSheet() {
   }
 }
 
-// 4. ENDPOINT PARA LEITURA DE TODOS OS DADOS (GET) - CORRIGIDO
+// 4. ROTA RAIZ - Informações da API
+app.get('/', (req, res) => {
+  res.json({
+    message: 'FinanceApp Backend API',
+    version: '1.0.0',
+    endpoints: {
+      'GET /api/get-all-data': 'Retorna todos os dados (Registro, Metas, Organizadores)',
+      'POST /api/add-registro': 'Adiciona um novo registro',
+      'POST /api/update-registro': 'Atualiza um registro existente',
+      'POST /api/add-meta': 'Adiciona uma nova meta',
+      'POST /api/update-meta': 'Atualiza uma meta existente',
+      'POST /api/delete-meta': 'Deleta uma meta',
+      'POST /api/add-organizador': 'Adiciona um novo organizador/tag',
+      'POST /api/update-organizador': 'Atualiza um organizador/tag existente',
+      'POST /api/delete-organizador': 'Deleta um organizador/tag'
+    }
+  });
+});
+
+// 5. ENDPOINT PARA LEITURA DE TODOS OS DADOS (GET) - CORRIGIDO
 app.get('/api/get-all-data', async (req, res) => {
     try {
         const ranges = [
@@ -277,7 +296,7 @@ app.get('/api/get-all-data', async (req, res) => {
     }
 });
 
-// 5. ENDPOINT PARA ADICIONAR REGISTRO (POST /api/add-registro)
+// 6. ENDPOINT PARA ADICIONAR REGISTRO (POST /api/add-registro)
 app.post('/api/add-registro', async (req, res) => {
     const data = req.body; 
 
@@ -287,14 +306,14 @@ app.post('/api/add-registro', async (req, res) => {
     
     const rowValues = [
         data.Data,                           // Coluna A: Data
-        data.Valor,                          // Coluna B: Valor
-        data.Tag_1 || '',                    // Coluna C: Tag_1
-        data.Tag_2 || '',                    // Coluna D: Tag_2
-        data.Tag_3 || '',                    // Coluna E: Tag_3
-        data.Tag_4 || '',                    // Coluna F: Tag_4
-        data.Descricao || '',                // Coluna G: Descrição
-        'Débito',                            // Coluna H: Forma do pagamento (PADRÃO)
-        data.Tipo || '',                     // Coluna I: Tipo
+        data.Tipo || '',                     // Coluna B: Tipo
+        data.Valor,                          // Coluna C: Valor
+        data.Descrição || data.Descricao || '', // Coluna D: Descrição
+        data.Tag_1 || '',                    // Coluna E: Tag_1
+        data.Tag_2 || '',                    // Coluna F: Tag_2
+        data.Tag_3 || '',                    // Coluna G: Tag_3
+        data.Tag_4 || '',                    // Coluna H: Tag_4
+        data['Forma do pagamento'] || 'Débito', // Coluna I: Forma do pagamento (PADRÃO)
     ];
     
     const resource = {
@@ -317,7 +336,7 @@ app.post('/api/add-registro', async (req, res) => {
     }
 });
 
-// 6. ENDPOINT PARA ATUALIZAR REGISTRO (POST /api/update-registro)
+// 7. ENDPOINT PARA ATUALIZAR REGISTRO (POST /api/update-registro)
 app.post('/api/update-registro', async (req, res) => {
     const { ROW_NUMBER, column, value } = req.body;
     
@@ -353,7 +372,7 @@ app.post('/api/update-registro', async (req, res) => {
     }
 });
 
-// 7. ENDPOINT PARA ADICIONAR META (POST /api/add-meta)
+// 8. ENDPOINT PARA ADICIONAR META (POST /api/add-meta)
 app.post('/api/add-meta', async (req, res) => {
     const data = req.body; 
 
@@ -387,7 +406,7 @@ app.post('/api/add-meta', async (req, res) => {
     }
 });
 
-// 8. ENDPOINT PARA ATUALIZAR META (POST /api/update-meta)
+// 9. ENDPOINT PARA ATUALIZAR META (POST /api/update-meta)
 app.post('/api/update-meta', async (req, res) => {
     const { ROW_NUMBER, column, value } = req.body;
     
@@ -423,7 +442,7 @@ app.post('/api/update-meta', async (req, res) => {
     }
 });
 
-// 9. ENDPOINT PARA DELETAR META (POST /api/delete-meta)
+// 10. ENDPOINT PARA DELETAR META (POST /api/delete-meta)
 app.post('/api/delete-meta', async (req, res) => {
     const { ROW_NUMBER } = req.body;
     
@@ -461,7 +480,7 @@ app.post('/api/delete-meta', async (req, res) => {
     }
 });
 
-// 10. ENDPOINT PARA ADICIONAR ORGANIZADOR/TAG (POST /api/add-organizador)
+// 11. ENDPOINT PARA ADICIONAR ORGANIZADOR/TAG (POST /api/add-organizador)
 app.post('/api/add-organizador', async (req, res) => {
     const data = req.body; 
 
@@ -509,7 +528,7 @@ app.post('/api/add-organizador', async (req, res) => {
     }
 });
 
-// 11. ENDPOINT PARA ATUALIZAR ORGANIZADOR/TAG (POST /api/update-organizador)
+// 12. ENDPOINT PARA ATUALIZAR ORGANIZADOR/TAG (POST /api/update-organizador)
 app.post('/api/update-organizador', async (req, res) => {
     const { ROW_NUMBER, column, value } = req.body;
     
@@ -550,7 +569,7 @@ app.post('/api/update-organizador', async (req, res) => {
     }
 });
 
-// 12. ENDPOINT PARA DELETAR ORGANIZADOR/TAG (POST /api/delete-organizador)
+// 13. ENDPOINT PARA DELETAR ORGANIZADOR/TAG (POST /api/delete-organizador)
 app.post('/api/delete-organizador', async (req, res) => {
     const { ROW_NUMBER } = req.body;
     
@@ -588,7 +607,7 @@ app.post('/api/delete-organizador', async (req, res) => {
     }
 });
 
-// 13. INICIA O SERVIDOR
+// 14. INICIA O SERVIDOR
 authenticateSheet().then(() => {
   app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
