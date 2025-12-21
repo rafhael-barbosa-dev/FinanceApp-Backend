@@ -1,4 +1,4 @@
-// server.js - ATUALIZADO: Suporte para Metas e Organizadores (Tags e Cores)
+// server.js - ATUALIZADO: Suporte para Metas e Organizadores (Tags e Cores) - CORRIGIDO
 
 // 1. IMPORTAÇÕES E SETUP
 require('dotenv').config(); 
@@ -144,11 +144,16 @@ async function updateCellBackground(sheetName, cellRange, colorHex) {
 
 // Função auxiliar para obter o ID da aba
 async function getSheetId(sheetName) {
-    const spreadsheet = await sheets.spreadsheets.get({
-        spreadsheetId: SPREADSHEET_ID
-    });
-    const sheet = spreadsheet.data.sheets.find(s => s.properties.title === sheetName);
-    return sheet ? sheet.properties.sheetId : null;
+    try {
+        const spreadsheet = await sheets.spreadsheets.get({
+            spreadsheetId: SPREADSHEET_ID
+        });
+        const sheet = spreadsheet.data.sheets.find(s => s.properties.title === sheetName);
+        return sheet ? sheet.properties.sheetId : null;
+    } catch (error) {
+        console.error(`Erro ao obter sheetId para ${sheetName}:`, error);
+        return null;
+    }
 }
 
 // Função auxiliar para converter letra de coluna em índice
@@ -173,7 +178,7 @@ async function authenticateSheet() {
   }
 }
 
-// 4. ENDPOINT PARA LEITURA DE TODOS OS DADOS (GET)
+// 4. ENDPOINT PARA LEITURA DE TODOS OS DADOS (GET) - CORRIGIDO
 app.get('/api/get-all-data', async (req, res) => {
     try {
         const ranges = [
@@ -189,61 +194,86 @@ app.get('/api/get-all-data', async (req, res) => {
             majorDimension: 'ROWS',
         });
 
-        // Lê os formatos (cores de background) da aba Organizadores
+        // Verifica se os dados foram retornados corretamente
+        if (!valuesResponse.data.valueRanges || valuesResponse.data.valueRanges.length !== 3) {
+            throw new Error('Resposta incompleta da API do Google Sheets');
+        }
+
+        // Processa os dados básicos primeiro
+        const registroData = mapHeadersToObjects(valuesResponse.data.valueRanges[0].values || []);
+        const metasData = mapHeadersToObjects(valuesResponse.data.valueRanges[1].values || []);
+        const organizadoresData = mapHeadersToObjects(valuesResponse.data.valueRanges[2].values || []);
+
+        // Lê os formatos (cores de background) da aba Organizadores - CORRIGIDO
         let organizadoresColors = {};
         try {
-            const formatResponse = await sheets.spreadsheets.get({
-                spreadsheetId: SPREADSHEET_ID,
-                ranges: [`${SHEET_NAMES.ORGANIZADORES}!A1:D1000`],
-                includeGridData: true
-            });
+            // Obtém o sheetId da aba Organizadores
+            const organizadoresSheetId = await getSheetId(SHEET_NAMES.ORGANIZADORES);
             
-            const sheetData = formatResponse.data.sheets[0];
-            if (sheetData && sheetData.data && sheetData.data[0] && sheetData.data[0].rowData) {
-                sheetData.data[0].rowData.forEach((row, rowIndex) => {
-                    if (rowIndex === 0) return; // Pula o header
-                    if (row.values && row.values[3]) { // Coluna D (índice 3)
-                        const bgColor = row.values[3].effectiveFormat?.backgroundColor;
-                        if (bgColor) {
-                            // Converte RGB para hex
-                            const r = Math.round((bgColor.red || 0) * 255).toString(16).padStart(2, '0');
-                            const g = Math.round((bgColor.green || 0) * 255).toString(16).padStart(2, '0');
-                            const b = Math.round((bgColor.blue || 0) * 255).toString(16).padStart(2, '0');
-                            const hexColor = `#${r}${g}${b}`;
-                            
-                            // Associa a cor à tag na mesma linha
-                            const tagRow = valuesResponse.data.valueRanges[2].values[rowIndex];
-                            if (tagRow && tagRow[0]) {
-                                organizadoresColors[tagRow[0]] = hexColor;
+            if (organizadoresSheetId) {
+                const formatResponse = await sheets.spreadsheets.get({
+                    spreadsheetId: SPREADSHEET_ID,
+                    ranges: [`${SHEET_NAMES.ORGANIZADORES}!A1:D1000`],
+                    includeGridData: true
+                });
+                
+                // Encontra a aba correta pelo sheetId
+                const organizadoresSheet = formatResponse.data.sheets.find(
+                    sheet => sheet.properties.sheetId === organizadoresSheetId
+                );
+                
+                if (organizadoresSheet && organizadoresSheet.data && organizadoresSheet.data[0] && organizadoresSheet.data[0].rowData) {
+                    organizadoresSheet.data[0].rowData.forEach((row, rowIndex) => {
+                        if (rowIndex === 0) return; // Pula o header
+                        if (row.values && row.values[3]) { // Coluna D (índice 3)
+                            const bgColor = row.values[3].effectiveFormat?.backgroundColor;
+                            if (bgColor) {
+                                // Converte RGB para hex
+                                const r = Math.round((bgColor.red || 0) * 255).toString(16).padStart(2, '0');
+                                const g = Math.round((bgColor.green || 0) * 255).toString(16).padStart(2, '0');
+                                const b = Math.round((bgColor.blue || 0) * 255).toString(16).padStart(2, '0');
+                                const hexColor = `#${r}${g}${b}`;
+                                
+                                // Associa a cor à tag na mesma linha (usa os dados já processados)
+                                if (organizadoresData[rowIndex - 1] && organizadoresData[rowIndex - 1].Tag) {
+                                    organizadoresColors[organizadoresData[rowIndex - 1].Tag] = hexColor;
+                                }
                             }
                         }
-                    }
-                });
+                    });
+                }
             }
         } catch (colorError) {
             console.error('Erro ao ler cores (continuando sem cores):', colorError.message);
-            // Continua sem cores se houver erro
+            // Continua sem cores se houver erro - não quebra a requisição
         }
 
+        // Adiciona as cores aos organizadores
+        const organizadoresWithColors = organizadoresData.map(org => {
+            if (organizadoresColors[org.Tag]) {
+                org.Cor = organizadoresColors[org.Tag];
+            } else if (!org.Cor || org.Cor === '') {
+                org.Cor = '#4bc0c0'; // Cor padrão
+            }
+            return org;
+        });
+
         const rawData = {
-            registro: mapHeadersToObjects(valuesResponse.data.valueRanges[0].values),
-            metas: mapHeadersToObjects(valuesResponse.data.valueRanges[1].values),
-            organizadores: mapHeadersToObjects(valuesResponse.data.valueRanges[2].values).map(org => {
-                // Adiciona a cor lida do formato da célula ou usa a cor do valor ou padrão
-                if (organizadoresColors[org.Tag]) {
-                    org.Cor = organizadoresColors[org.Tag];
-                } else if (!org.Cor || org.Cor === '') {
-                    org.Cor = '#4bc0c0'; // Cor padrão
-                }
-                return org;
-            }),
+            registro: registroData,
+            metas: metasData,
+            organizadores: organizadoresWithColors,
         };
         
         return res.status(200).json(rawData);
 
     } catch (error) {
         console.error("Erro ao ler dados da planilha:", error.message);
-        return res.status(500).json({ success: false, message: 'Falha ao ler dados da Sheets API.', error: error.message });
+        console.error("Stack trace:", error.stack);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Falha ao ler dados da Sheets API.', 
+            error: error.message 
+        });
     }
 });
 
@@ -402,13 +432,18 @@ app.post('/api/delete-meta', async (req, res) => {
     }
 
     try {
+        const sheetId = await getSheetId(SHEET_NAMES.METAS);
+        if (!sheetId) {
+            return res.status(400).json({ success: false, message: 'Aba Metas não encontrada.' });
+        }
+
         const response = await sheets.spreadsheets.batchUpdate({
             spreadsheetId: SPREADSHEET_ID,
             resource: {
                 requests: [{
                     deleteDimension: {
                         range: {
-                            sheetId: await getSheetId(SHEET_NAMES.METAS),
+                            sheetId: sheetId,
                             dimension: 'ROWS',
                             startIndex: ROW_NUMBER - 1,
                             endIndex: ROW_NUMBER
@@ -455,10 +490,14 @@ app.post('/api/add-organizador', async (req, res) => {
 
         // Atualiza a cor de fundo da célula se fornecida
         if (data.Cor) {
-            const newRowNumber = response.data.updates.updatedRange ? 
-                parseInt(response.data.updates.updatedRange.match(/\d+/)[0]) : null;
-            if (newRowNumber) {
-                await updateCellBackground(SHEET_NAMES.ORGANIZADORES, `D${newRowNumber}`, data.Cor);
+            // Extrai o número da linha do updatedRange
+            const updatedRange = response.data.updates?.updatedRange;
+            if (updatedRange) {
+                const match = updatedRange.match(/([A-Z]+)(\d+)/);
+                if (match) {
+                    const newRowNumber = parseInt(match[2]);
+                    await updateCellBackground(SHEET_NAMES.ORGANIZADORES, `D${newRowNumber}`, data.Cor);
+                }
             }
         }
         
@@ -520,13 +559,18 @@ app.post('/api/delete-organizador', async (req, res) => {
     }
 
     try {
+        const sheetId = await getSheetId(SHEET_NAMES.ORGANIZADORES);
+        if (!sheetId) {
+            return res.status(400).json({ success: false, message: 'Aba Organizadores não encontrada.' });
+        }
+
         const response = await sheets.spreadsheets.batchUpdate({
             spreadsheetId: SPREADSHEET_ID,
             resource: {
                 requests: [{
                     deleteDimension: {
                         range: {
-                            sheetId: await getSheetId(SHEET_NAMES.ORGANIZADORES),
+                            sheetId: sheetId,
                             dimension: 'ROWS',
                             startIndex: ROW_NUMBER - 1,
                             endIndex: ROW_NUMBER
@@ -561,3 +605,4 @@ authenticateSheet().then(() => {
 }).catch((error) => {
     console.error(`Servidor não iniciado devido a falha crítica na autenticação: ${error.message}`);
 });
+
